@@ -53,6 +53,7 @@ func newTestProvider(server *httptest.Server, model string) sdk.Provider {
 
 	return &provider{
 		client: server.Client(),
+		retry:  retry.DefaultConfig(),
 		config: openaicompat.ProviderConfig{
 			BaseURL:       server.URL,
 			APIKey:        "test-key",
@@ -241,6 +242,45 @@ func TestStream_APIError(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Invalid API key")
+}
+
+func TestStream_UsesConfiguredRetryPolicy(t *testing.T) {
+	var attempts int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprint(w, `{"error":{"message":"try again","type":"server_error"}}`)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, sseStream(
+			sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
+			sseChunk(openaicompat.ChunkDelta{}, new("stop")),
+			sseDone(),
+		))
+	}))
+	defer server.Close()
+
+	p := newTestProvider(server, "gpt-5.5").(*provider)
+	p.retry = retry.Config{
+		MaxRetries: 0,
+		BaseDelay:  0,
+		MaxDelay:   0,
+		Multiplier: 1,
+		Jitter:     retry.JitterNone,
+	}
+
+	_, err := p.Stream(context.Background(), sdk.ProviderRequest{
+		Messages: []sdk.Message{sdk.NewUserMessage("hi")},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max retries exceeded (0)")
+	assert.Equal(t, 1, attempts)
 }
 
 func TestStream_WithTools(t *testing.T) {

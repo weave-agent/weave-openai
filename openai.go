@@ -91,7 +91,10 @@ func modifyRequest(modelName string) func(body map[string]any, so *model.StreamO
 }
 
 func (p *provider) Stream(ctx context.Context, req sdk.ProviderRequest, opts ...model.StreamOption) (<-chan sdk.ProviderEvent, error) {
-	ch, err := openaicompat.Stream(ctx, p.client, p.config, req, opts...)
+	cfg := p.config
+	cfg.RetryConfig = &p.retry
+
+	ch, err := openaicompat.Stream(ctx, p.client, cfg, req, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("openai: %w", err)
 	}
