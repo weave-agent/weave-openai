@@ -16,6 +16,45 @@ The `--name openai` ensures your fork shadows the official extension.
 weave install github.com/weave-agent/weave-openai --name openai
 ```
 
+## Configuration
+
+The OpenAI provider supports shared provider HTTP and retry settings from Weave config. Values under `providers.defaults` apply to all providers, and values under `providers.openai` override defaults for OpenAI only.
+
+```json
+{
+  "providers": {
+    "defaults": {
+      "http": {
+        "dial_timeout": "10s",
+        "tls_handshake_timeout": "10s",
+        "response_header_timeout": "60s",
+        "idle_conn_timeout": "90s"
+      },
+      "retry": {
+        "max_retries": 5,
+        "base_delay": "1s",
+        "max_delay": "30s",
+        "multiplier": 2.0,
+        "jitter": "full"
+      }
+    },
+    "openai": {
+      "model": "gpt-5.5",
+      "base_url": "https://api.openai.com/v1",
+      "http": {
+        "response_header_timeout": "30s"
+      },
+      "retry": {
+        "max_retries": 2,
+        "jitter": "none"
+      }
+    }
+  }
+}
+```
+
+Duration fields use Go duration strings such as `5s`, `1m`, or `500ms`. `jitter` accepts `full` or `none`.
+
 ## Development
 
 ```bash

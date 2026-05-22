@@ -47,19 +47,39 @@ func (s *stubConfig) ExtensionConfig(scope, name string, target any) error {
 	return nil
 }
 
+type failingConfig struct {
+	stubConfig
+	failName string
+	failAt   int
+	calls    int
+}
+
+func (f *failingConfig) ExtensionConfig(scope, name string, target any) error {
+	if scope == "providers" && name == f.failName {
+		f.calls++
+		if f.calls == f.failAt {
+			return fmt.Errorf("load %s failed", name)
+		}
+	}
+
+	return f.stubConfig.ExtensionConfig(scope, name, target)
+}
+
 func newTestProvider(server *httptest.Server, model string) sdk.Provider {
 	if model == "" {
 		model = "gpt-5.5"
 	}
 
+	retryConfig := retry.DefaultConfig()
+
 	return &provider{
 		client: server.Client(),
-		retry:  retry.DefaultConfig(),
 		config: openaicompat.ProviderConfig{
 			BaseURL:       server.URL,
 			APIKey:        "test-key",
 			Model:         model,
 			ModifyRequest: modifyRequest(model),
+			RetryConfig:   &retryConfig,
 		},
 	}
 }
@@ -267,7 +287,7 @@ func TestStream_UsesConfiguredRetryPolicy(t *testing.T) {
 	defer server.Close()
 
 	p := newTestProvider(server, "gpt-5.5").(*provider)
-	p.retry = retry.Config{
+	*p.config.RetryConfig = retry.Config{
 		MaxRetries: 0,
 		BaseDelay:  0,
 		MaxDelay:   0,
@@ -282,6 +302,54 @@ func TestStream_UsesConfiguredRetryPolicy(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "max retries exceeded (0)")
 	assert.Equal(t, 1, attempts)
+}
+
+func TestStream_RetriesTransientErrorWithConfiguredPolicy(t *testing.T) {
+	var attempts int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprint(w, `{"error":{"message":"try again","type":"server_error"}}`)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, sseStream(
+			sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
+			sseChunk(openaicompat.ChunkDelta{}, new("stop")),
+			sseDone(),
+		))
+	}))
+	defer server.Close()
+
+	p := newTestProvider(server, "gpt-5.5").(*provider)
+	*p.config.RetryConfig = retry.Config{
+		MaxRetries: 1,
+		BaseDelay:  0,
+		MaxDelay:   0,
+		Multiplier: 1,
+		Jitter:     retry.JitterNone,
+	}
+
+	ch, err := p.Stream(context.Background(), sdk.ProviderRequest{
+		Messages: []sdk.Message{sdk.NewUserMessage("hi")},
+	})
+	require.NoError(t, err)
+
+	events := collectEvents(t, ch)
+
+	var textParts []string
+	for _, e := range events {
+		if e.Type == sdk.ProviderEventTextDelta {
+			textParts = append(textParts, e.Content.(string))
+		}
+	}
+
+	assert.Equal(t, []string{"ok"}, textParts)
+	assert.Equal(t, 2, attempts)
 }
 
 func TestStream_WithTools(t *testing.T) {
@@ -481,11 +549,12 @@ func TestProviderInit_WithDefaultConfig(t *testing.T) {
 	assert.Equal(t, "test-key", p.config.APIKey)
 	assert.Equal(t, "gpt-5.5", p.config.Model)
 	assert.NotNil(t, p.config.ModifyRequest)
-	assert.Equal(t, 5, p.retry.MaxRetries)
-	assert.Equal(t, time.Second, p.retry.BaseDelay)
-	assert.Equal(t, 30*time.Second, p.retry.MaxDelay)
-	assert.Equal(t, 2.0, p.retry.Multiplier)
-	assert.Equal(t, retry.JitterFull, p.retry.Jitter)
+	require.NotNil(t, p.config.RetryConfig)
+	assert.Equal(t, 5, p.config.RetryConfig.MaxRetries)
+	assert.Equal(t, time.Second, p.config.RetryConfig.BaseDelay)
+	assert.Equal(t, 30*time.Second, p.config.RetryConfig.MaxDelay)
+	assert.Equal(t, 2.0, p.config.RetryConfig.Multiplier)
+	assert.Equal(t, retry.JitterFull, p.config.RetryConfig.Jitter)
 }
 
 func TestProviderInit_WithCustomHTTPAndRetryConfig(t *testing.T) {
@@ -527,15 +596,51 @@ func TestProviderInit_WithCustomHTTPAndRetryConfig(t *testing.T) {
 	assert.Equal(t, 4*time.Second, transport.ResponseHeaderTimeout)
 	assert.Equal(t, 22*time.Second, transport.IdleConnTimeout)
 	assert.Equal(t, 0*time.Second, p.client.Timeout)
-	assert.Equal(t, 7, p.retry.MaxRetries)
-	assert.Equal(t, 3*time.Second, p.retry.BaseDelay)
-	assert.Equal(t, 9*time.Second, p.retry.MaxDelay)
-	assert.InDelta(t, 1.5, p.retry.Multiplier, 0.0001)
-	assert.Equal(t, retry.JitterFull, p.retry.Jitter)
+	require.NotNil(t, p.config.RetryConfig)
+	assert.Equal(t, 7, p.config.RetryConfig.MaxRetries)
+	assert.Equal(t, 3*time.Second, p.config.RetryConfig.BaseDelay)
+	assert.Equal(t, 9*time.Second, p.config.RetryConfig.MaxDelay)
+	assert.InDelta(t, 1.5, p.config.RetryConfig.Multiplier, 0.0001)
+	assert.Equal(t, retry.JitterFull, p.config.RetryConfig.Jitter)
 	assert.Equal(t, "https://example.test/v1", p.config.BaseURL)
 	assert.Equal(t, "test-key", p.config.APIKey)
 	assert.Equal(t, "gpt-custom", p.config.Model)
 	assert.NotNil(t, p.config.ModifyRequest)
+}
+
+func TestStream_UsesProviderConfiguredHTTPTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, sseStream(
+			sseChunk(openaicompat.ChunkDelta{Content: "late"}, nil),
+			sseChunk(openaicompat.ChunkDelta{}, new("stop")),
+			sseDone(),
+		))
+	}))
+	defer server.Close()
+
+	cfg := &stubConfig{
+		providers: map[string]map[string]any{
+			"openai": {
+				"base_url": server.URL,
+				"http": map[string]any{
+					"response_header_timeout": "1ms",
+				},
+				"retry": map[string]any{
+					"max_retries": 0,
+				},
+			},
+		},
+	}
+
+	p := getTestProvider(t, cfg)
+	_, err := p.Stream(context.Background(), sdk.ProviderRequest{
+		Messages: []sdk.Message{sdk.NewUserMessage("hi")},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "timeout awaiting response headers")
 }
 
 func TestProviderInit_InvalidHTTPConfigFails(t *testing.T) {
@@ -576,6 +681,48 @@ func TestProviderInit_InvalidRetryConfigFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "openai: resolve retry config")
 	assert.Contains(t, err.Error(), "invalid jitter")
+}
+
+func TestProviderInit_HTTPConfigLoadFailureFails(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	cfg := &failingConfig{
+		stubConfig: stubConfig{
+			providers: map[string]map[string]any{
+				"openai": {},
+			},
+		},
+		failName: "defaults",
+		failAt:   1,
+	}
+
+	_, err := sdk.GetProvider("openai", cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "openai: resolve HTTP config")
+	assert.Contains(t, err.Error(), "load provider defaults")
+	assert.Contains(t, err.Error(), "load defaults failed")
+}
+
+func TestProviderInit_RetryConfigLoadFailureFails(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	cfg := &failingConfig{
+		stubConfig: stubConfig{
+			providers: map[string]map[string]any{
+				"openai": {},
+			},
+		},
+		failName: "openai",
+		failAt:   3,
+	}
+
+	_, err := sdk.GetProvider("openai", cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "openai: resolve retry config")
+	assert.Contains(t, err.Error(), "load provider openai")
+	assert.Contains(t, err.Error(), "load openai failed")
 }
 
 func TestRegister(t *testing.T) {

@@ -10,7 +10,6 @@ import (
 	"github.com/weave-agent/weave/sdk/model"
 	"github.com/weave-agent/weave/sdk/providerhttp"
 	"github.com/weave-agent/weave/sdk/providerretry"
-	"github.com/weave-agent/weave/sdk/retry"
 	"github.com/weave-agent/weave/utils/openaicompat"
 )
 
@@ -27,7 +26,6 @@ type AuthConfig struct {
 
 type provider struct {
 	client *http.Client
-	retry  retry.Config
 	config openaicompat.ProviderConfig
 }
 
@@ -49,12 +47,12 @@ func init() {
 
 		return &provider{
 			client: client,
-			retry:  retryConfig,
 			config: openaicompat.ProviderConfig{
 				BaseURL:       oc.BaseURL,
 				APIKey:        a.APIKey,
 				Model:         oc.Model,
 				ModifyRequest: modifyRequest(oc.Model),
+				RetryConfig:   &retryConfig,
 			},
 		}, nil
 	})
@@ -91,10 +89,7 @@ func modifyRequest(modelName string) func(body map[string]any, so *model.StreamO
 }
 
 func (p *provider) Stream(ctx context.Context, req sdk.ProviderRequest, opts ...model.StreamOption) (<-chan sdk.ProviderEvent, error) {
-	cfg := p.config
-	cfg.RetryConfig = &p.retry
-
-	ch, err := openaicompat.Stream(ctx, p.client, cfg, req, opts...)
+	ch, err := openaicompat.Stream(ctx, p.client, p.config, req, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("openai: %w", err)
 	}
