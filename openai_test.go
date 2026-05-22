@@ -13,6 +13,7 @@ import (
 	"github.com/weave-agent/weave/sdk"
 	sdkmodel "github.com/weave-agent/weave/sdk/model"
 	"github.com/weave-agent/weave/sdk/retry"
+	"github.com/weave-agent/weave/settings"
 	"github.com/weave-agent/weave/utils/openaicompat"
 
 	"github.com/stretchr/testify/assert"
@@ -467,6 +468,24 @@ func TestStream_WithThinkingLevel_SetsReasoningEffort(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProviderInit_WithDefaultConfig(t *testing.T) {
+	cfg, err := settings.LoadFullConfig("")
+	require.NoError(t, err)
+
+	p := getTestProvider(t, cfg)
+
+	require.NotNil(t, p.client)
+	assert.Equal(t, "https://api.openai.com/v1", p.config.BaseURL)
+	assert.Equal(t, "test-key", p.config.APIKey)
+	assert.Equal(t, "gpt-5.5", p.config.Model)
+	assert.NotNil(t, p.config.ModifyRequest)
+	assert.Equal(t, 5, p.retry.MaxRetries)
+	assert.Equal(t, time.Second, p.retry.BaseDelay)
+	assert.Equal(t, 30*time.Second, p.retry.MaxDelay)
+	assert.Equal(t, 2.0, p.retry.Multiplier)
+	assert.Equal(t, retry.JitterFull, p.retry.Jitter)
 }
 
 func TestProviderInit_WithCustomHTTPAndRetryConfig(t *testing.T) {
