@@ -12,11 +12,39 @@ import (
 
 	"github.com/weave-agent/weave/sdk"
 	sdkmodel "github.com/weave-agent/weave/sdk/model"
+	"github.com/weave-agent/weave/sdk/retry"
 	"github.com/weave-agent/weave/utils/openaicompat"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type stubConfig struct {
+	providers map[string]map[string]any
+	sdk.NoopConfig
+}
+
+func (s *stubConfig) ExtensionConfig(scope, name string, target any) error {
+	if scope != "providers" {
+		return fmt.Errorf("unknown scope %q", scope)
+	}
+
+	section, ok := s.providers[name]
+	if !ok {
+		return nil
+	}
+
+	data, err := json.Marshal(section)
+	if err != nil {
+		return fmt.Errorf("marshal stub config: %w", err)
+	}
+
+	if err := json.Unmarshal(data, target); err != nil {
+		return fmt.Errorf("unmarshal stub config: %w", err)
+	}
+
+	return nil
+}
 
 func newTestProvider(server *httptest.Server, model string) sdk.Provider {
 	if model == "" {
@@ -32,6 +60,21 @@ func newTestProvider(server *httptest.Server, model string) sdk.Provider {
 			ModifyRequest: modifyRequest(model),
 		},
 	}
+}
+
+func getTestProvider(t *testing.T, cfg sdk.Config) *provider {
+	t.Helper()
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	p, err := sdk.GetProvider("openai", cfg)
+	require.NoError(t, err)
+
+	op, ok := p.(*provider)
+	require.True(t, ok)
+
+	return op
 }
 
 func collectEvents(t *testing.T, ch <-chan sdk.ProviderEvent) []sdk.ProviderEvent {
@@ -384,6 +427,96 @@ func TestStream_WithThinkingLevel_SetsReasoningEffort(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProviderInit_WithCustomHTTPAndRetryConfig(t *testing.T) {
+	cfg := &stubConfig{
+		providers: map[string]map[string]any{
+			"defaults": {
+				"http": map[string]any{
+					"response_header_timeout": "11s",
+					"idle_conn_timeout":       "22s",
+				},
+				"retry": map[string]any{
+					"max_retries": 2,
+					"base_delay":  "3s",
+					"max_delay":   "9s",
+					"multiplier":  1.5,
+					"jitter":      "none",
+				},
+			},
+			"openai": {
+				"model":    "gpt-custom",
+				"base_url": "https://example.test/v1",
+				"http": map[string]any{
+					"response_header_timeout": "4s",
+				},
+				"retry": map[string]any{
+					"max_retries": 7,
+					"jitter":      "full",
+				},
+			},
+		},
+	}
+
+	p := getTestProvider(t, cfg)
+
+	require.NotNil(t, p.client)
+	transport, ok := p.client.Transport.(*http.Transport)
+	require.True(t, ok)
+
+	assert.Equal(t, 4*time.Second, transport.ResponseHeaderTimeout)
+	assert.Equal(t, 22*time.Second, transport.IdleConnTimeout)
+	assert.Equal(t, 0*time.Second, p.client.Timeout)
+	assert.Equal(t, 7, p.retry.MaxRetries)
+	assert.Equal(t, 3*time.Second, p.retry.BaseDelay)
+	assert.Equal(t, 9*time.Second, p.retry.MaxDelay)
+	assert.InDelta(t, 1.5, p.retry.Multiplier, 0.0001)
+	assert.Equal(t, retry.JitterFull, p.retry.Jitter)
+	assert.Equal(t, "https://example.test/v1", p.config.BaseURL)
+	assert.Equal(t, "test-key", p.config.APIKey)
+	assert.Equal(t, "gpt-custom", p.config.Model)
+	assert.NotNil(t, p.config.ModifyRequest)
+}
+
+func TestProviderInit_InvalidHTTPConfigFails(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	cfg := &stubConfig{
+		providers: map[string]map[string]any{
+			"openai": {
+				"http": map[string]any{
+					"response_header_timeout": "not-a-duration",
+				},
+			},
+		},
+	}
+
+	_, err := sdk.GetProvider("openai", cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "openai: resolve HTTP config")
+	assert.Contains(t, err.Error(), "invalid response_header_timeout")
+}
+
+func TestProviderInit_InvalidRetryConfigFails(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	cfg := &stubConfig{
+		providers: map[string]map[string]any{
+			"openai": {
+				"retry": map[string]any{
+					"jitter": "sometimes",
+				},
+			},
+		},
+	}
+
+	_, err := sdk.GetProvider("openai", cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "openai: resolve retry config")
+	assert.Contains(t, err.Error(), "invalid jitter")
 }
 
 func TestRegister(t *testing.T) {
