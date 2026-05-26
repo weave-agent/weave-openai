@@ -65,11 +65,11 @@
 - [x] run `go test ./...` - must pass before next task
 
 ### Task 3: Verify model budget metadata
-- [ ] review OpenAI model context windows and max output token metadata for budget accuracy
-- [ ] update stale model metadata only if verified against current provider docs
-- [ ] write tests for default model metadata and reasoning support flags
-- [ ] write tests for `SupportsXHigh` clamping expectations where relevant
-- [ ] run `go test ./...` - must pass before next task
+- [x] review OpenAI model context windows and max output token metadata for budget accuracy
+- [x] update stale model metadata only if verified against current provider docs
+- [x] write tests for default model metadata and reasoning support flags
+- [x] write tests for `SupportsXHigh` clamping expectations where relevant
+- [x] run `go test ./...` - must pass before next task
 
 ### Task 4: Verify acceptance criteria
 - [ ] verify OpenAI usage telemetry includes cache read tokens when provider sends them

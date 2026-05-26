@@ -13,12 +13,12 @@ func RegisterModels() {
 	model.RegisterModel(model.ModelDef{
 		ID: "gpt-5.5", Provider: "openai",
 		DisplayName: "GPT-5.5", Reasoning: true, SupportsXHigh: true,
-		ContextWindow: 272000, MaxTokens: 128000, Default: true,
+		ContextWindow: 1050000, MaxTokens: 128000, Default: true,
 	})
 	model.RegisterModel(model.ModelDef{
 		ID: "gpt-5.4", Provider: "openai",
 		DisplayName: "GPT-5.4", Reasoning: true, SupportsXHigh: true,
-		ContextWindow: 272000, MaxTokens: 128000,
+		ContextWindow: 1050000, MaxTokens: 128000,
 	})
 	model.RegisterModel(model.ModelDef{
 		ID: "gpt-5.2", Provider: "openai",

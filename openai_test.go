@@ -733,6 +733,113 @@ func TestProvider_DoesNotExposeUnsupportedTokenCounter(t *testing.T) {
 	assert.False(t, ok, "OpenAI chat completions provider should not claim exact preflight token counts")
 }
 
+func TestRegisterModels_Metadata(t *testing.T) {
+	sdkmodel.ResetModelRegistry()
+	RegisterModels()
+	t.Cleanup(func() {
+		sdkmodel.ResetModelRegistry()
+		RegisterModels()
+	})
+
+	tests := []struct {
+		id            string
+		displayName   string
+		reasoning     bool
+		supportsXHigh bool
+		contextWindow int
+		maxTokens     int
+		defaultModel  bool
+	}{
+		{
+			id: "gpt-5.5", displayName: "GPT-5.5", reasoning: true, supportsXHigh: true,
+			contextWindow: 1050000, maxTokens: 128000, defaultModel: true,
+		},
+		{
+			id: "gpt-5.4", displayName: "GPT-5.4", reasoning: true, supportsXHigh: true,
+			contextWindow: 1050000, maxTokens: 128000,
+		},
+		{
+			id: "gpt-5.2", displayName: "GPT-5.2", reasoning: true, supportsXHigh: true,
+			contextWindow: 400000, maxTokens: 128000,
+		},
+		{
+			id: "gpt-4.1", displayName: "GPT-4.1",
+			contextWindow: 1047576, maxTokens: 32768,
+		},
+		{
+			id: "o4-mini", displayName: "o4-mini", reasoning: true,
+			contextWindow: 200000, maxTokens: 100000,
+		},
+		{
+			id: "o3", displayName: "o3", reasoning: true,
+			contextWindow: 200000, maxTokens: 100000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			got, ok := sdkmodel.GetModelForProvider(tt.id, "openai")
+			require.True(t, ok)
+
+			assert.Equal(t, tt.displayName, got.DisplayName)
+			assert.Equal(t, tt.reasoning, got.Reasoning)
+			assert.Equal(t, tt.supportsXHigh, got.SupportsXHigh)
+			assert.Equal(t, tt.contextWindow, got.ContextWindow)
+			assert.Equal(t, tt.maxTokens, got.MaxTokens)
+			assert.Equal(t, tt.defaultModel, got.Default)
+		})
+	}
+}
+
+func TestRegisterModels_DefaultModel(t *testing.T) {
+	sdkmodel.ResetModelRegistry()
+	RegisterModels()
+	t.Cleanup(func() {
+		sdkmodel.ResetModelRegistry()
+		RegisterModels()
+	})
+
+	got, ok := sdkmodel.DefaultModelForProvider("openai")
+	require.True(t, ok)
+
+	assert.Equal(t, "gpt-5.5", got.ID)
+	assert.True(t, got.Default)
+	assert.True(t, got.Reasoning)
+	assert.True(t, got.SupportsXHigh)
+	assert.Equal(t, 1050000, got.ContextWindow)
+	assert.Equal(t, 128000, got.MaxTokens)
+}
+
+func TestRegisterModels_XHighClamping(t *testing.T) {
+	sdkmodel.ResetModelRegistry()
+	RegisterModels()
+	t.Cleanup(func() {
+		sdkmodel.ResetModelRegistry()
+		RegisterModels()
+	})
+
+	tests := []struct {
+		id   string
+		want sdkmodel.ThinkingLevel
+	}{
+		{id: "gpt-5.5", want: sdkmodel.ThinkingXHigh},
+		{id: "gpt-5.4", want: sdkmodel.ThinkingXHigh},
+		{id: "gpt-5.2", want: sdkmodel.ThinkingXHigh},
+		{id: "o3", want: sdkmodel.ThinkingHigh},
+		{id: "o4-mini", want: sdkmodel.ThinkingHigh},
+		{id: "gpt-4.1", want: sdkmodel.ThinkingHigh},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			mdl, ok := sdkmodel.GetModelForProvider(tt.id, "openai")
+			require.True(t, ok)
+
+			assert.Equal(t, tt.want, sdkmodel.ClampForModel(sdkmodel.ThinkingXHigh, mdl))
+		})
+	}
+}
+
 func TestProviderInit_InvalidHTTPConfigFails(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("OPENAI_API_KEY", "test-key")
