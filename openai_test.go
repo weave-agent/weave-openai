@@ -652,6 +652,44 @@ func TestStream_WithThinkingLevel_SetsReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestStream_WithThinkingOff_SetsNoneForSupportedModels(t *testing.T) {
+	tests := []string{"gpt-5.5", "gpt-5.4", "gpt-5.2"}
+
+	for _, modelName := range tests {
+		t.Run(modelName, func(t *testing.T) {
+			var receivedBody map[string]any
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = fmt.Fprint(w, sseStream(
+					sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
+					sseChunk(openaicompat.ChunkDelta{}, new("stop")),
+					sseDone(),
+				))
+			}))
+			defer server.Close()
+
+			sdkmodel.ResetModelRegistry()
+			RegisterModels()
+			t.Cleanup(func() {
+				sdkmodel.ResetModelRegistry()
+				RegisterModels()
+			})
+
+			p := newTestProvider(server, modelName)
+			ch, err := p.Stream(context.Background(), sdk.ProviderRequest{
+				Messages: []sdk.Message{sdk.NewUserMessage("hi")},
+			}, sdkmodel.WithThinkingLevel(sdkmodel.ThinkingOff))
+			require.NoError(t, err)
+			collectEvents(t, ch)
+
+			assert.Equal(t, "none", receivedBody["reasoning_effort"])
+		})
+	}
+}
+
 func TestStream_WithThinkingXHigh_ClampsForModelWithoutXHigh(t *testing.T) {
 	var receivedBody map[string]any
 
