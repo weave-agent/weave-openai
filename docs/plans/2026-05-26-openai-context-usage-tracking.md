@@ -49,12 +49,12 @@
 ## Implementation Steps
 
 ### Task 1: Consume richer OpenAI-compatible usage fields
-- [ ] update dependency on root repo changes that parse cached prompt tokens
-- [ ] verify OpenAI provider maps cached-token detail through `sdk.ProviderUsage`
-- [ ] preserve existing streamed text, tool-call, and error behavior
-- [ ] write tests for provider usage event with cached-token detail
-- [ ] write tests for usage event without cached-token detail
-- [ ] run `go test ./...` - must pass before next task
+- [x] update dependency on root repo changes that parse cached prompt tokens
+- [x] verify OpenAI provider maps cached-token detail through `sdk.ProviderUsage`
+- [x] preserve existing streamed text, tool-call, and error behavior
+- [x] write tests for provider usage event with cached-token detail
+- [x] write tests for usage event without cached-token detail
+- [x] run `go test ./...` - must pass before next task
 
 ### Task 2: Add OpenAI preflight count strategy if supported
 - [ ] evaluate whether current OpenAI API path supports a no-generation count request in this provider shape

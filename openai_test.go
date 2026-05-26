@@ -180,6 +180,82 @@ func TestStream_TextResponse(t *testing.T) {
 	assert.Equal(t, []string{"Hello!"}, textParts)
 }
 
+func TestStream_UsageWithCachedPromptDetails(t *testing.T) {
+	stream := sseStream(
+		sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
+		`data: {"id":"chatcmpl-test","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":13}}}`+"\n",
+		sseDone(),
+	)
+
+	server := setupServer(stream)
+	defer server.Close()
+
+	p := newTestProvider(server, "gpt-5.5")
+	ch, err := p.Stream(context.Background(), sdk.ProviderRequest{
+		Messages: []sdk.Message{sdk.NewUserMessage("hi")},
+	})
+	require.NoError(t, err)
+
+	events := collectEvents(t, ch)
+
+	var textParts []string
+	var usages []sdk.ProviderUsage
+
+	for _, e := range events {
+		switch e.Type {
+		case sdk.ProviderEventTextDelta:
+			textParts = append(textParts, e.Content.(string))
+		case sdk.ProviderEventUsage:
+			usages = append(usages, e.Content.(sdk.ProviderUsage))
+		}
+	}
+
+	assert.Equal(t, []string{"ok"}, textParts)
+	require.Len(t, usages, 1)
+	assert.Equal(t, 20, usages[0].InputTokens)
+	assert.Equal(t, 4, usages[0].OutputTokens)
+	assert.Equal(t, 13, usages[0].CacheReadTokens)
+	assert.Zero(t, usages[0].CacheCreationTokens)
+}
+
+func TestStream_UsageWithoutCachedPromptDetails(t *testing.T) {
+	stream := sseStream(
+		sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
+		`data: {"id":"chatcmpl-test","choices":[],"usage":{"prompt_tokens":11,"completion_tokens":3}}`+"\n",
+		sseDone(),
+	)
+
+	server := setupServer(stream)
+	defer server.Close()
+
+	p := newTestProvider(server, "gpt-5.5")
+	ch, err := p.Stream(context.Background(), sdk.ProviderRequest{
+		Messages: []sdk.Message{sdk.NewUserMessage("hi")},
+	})
+	require.NoError(t, err)
+
+	events := collectEvents(t, ch)
+
+	var textParts []string
+	var usages []sdk.ProviderUsage
+
+	for _, e := range events {
+		switch e.Type {
+		case sdk.ProviderEventTextDelta:
+			textParts = append(textParts, e.Content.(string))
+		case sdk.ProviderEventUsage:
+			usages = append(usages, e.Content.(sdk.ProviderUsage))
+		}
+	}
+
+	assert.Equal(t, []string{"ok"}, textParts)
+	require.Len(t, usages, 1)
+	assert.Equal(t, 11, usages[0].InputTokens)
+	assert.Equal(t, 3, usages[0].OutputTokens)
+	assert.Zero(t, usages[0].CacheReadTokens)
+	assert.Zero(t, usages[0].CacheCreationTokens)
+}
+
 func TestStream_ToolCall(t *testing.T) {
 	stream := sseStream(
 		sseChunk(openaicompat.ChunkDelta{Role: "assistant"}, nil),
