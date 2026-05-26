@@ -1,5 +1,7 @@
 # Improve OpenAI Context Usage Tracking
 
+Status: Completed 2026-05-26.
+
 ## Overview
 - Improve OpenAI provider context tracking by exposing richer usage data from OpenAI-compatible responses.
 - Prepare the provider to participate in optional preflight token counting when SDK support exists.
@@ -85,6 +87,13 @@
 - Prefer honest count source reporting over pretending heuristic counts are exact.
 - Do not introduce a required tokenizer dependency unless the root SDK/provider architecture accepts it.
 - Keep OpenAI-compatible transport changes in the root repo shared utility.
+- Model metadata was verified on 2026-05-26 against OpenAI API model documentation:
+  - `gpt-5.5`: 1,050,000 context window, 128,000 max output tokens, reasoning with xhigh.
+  - `gpt-5.4`: 1,050,000 context window, 128,000 max output tokens, reasoning with xhigh.
+  - `gpt-5.2`: 400,000 context window, 128,000 max output tokens, reasoning with xhigh.
+  - `gpt-4.1`: 1,047,576 context window, 32,768 max output tokens, no reasoning.
+  - `o4-mini`: 200,000 context window, 100,000 max output tokens, reasoning.
+  - `o3`: 200,000 context window, 100,000 max output tokens, reasoning.
 
 ## Post-Completion
 

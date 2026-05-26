@@ -180,54 +180,95 @@ func TestStream_TextResponse(t *testing.T) {
 	assert.Equal(t, []string{"Hello!"}, textParts)
 }
 
-func TestStream_UsageWithCachedPromptDetails(t *testing.T) {
-	stream := sseStream(
-		sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
-		`data: {"id":"chatcmpl-test","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":13}}}`+"\n",
-		sseDone(),
-	)
-
-	server := setupServer(stream)
-	defer server.Close()
-
-	p := newTestProvider(server, "gpt-5.5")
-	ch, err := p.Stream(context.Background(), sdk.ProviderRequest{
-		Messages: []sdk.Message{sdk.NewUserMessage("hi")},
-	})
-	require.NoError(t, err)
-
-	events := collectEvents(t, ch)
-
-	var (
-		textParts []string
-		usages    []sdk.ProviderUsage
-	)
-
-	for _, e := range events {
-		switch e.Type {
-		case sdk.ProviderEventTextDelta:
-			textParts = append(textParts, e.Content.(string))
-		case sdk.ProviderEventUsage:
-			usages = append(usages, e.Content.(sdk.ProviderUsage))
-		}
+func TestStream_Usage(t *testing.T) {
+	tests := []struct {
+		name      string
+		usageJSON string
+		wantUsage sdk.ProviderUsage
+	}{
+		{
+			name:      "with cached prompt details",
+			usageJSON: `{"prompt_tokens":20,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":13}}`,
+			wantUsage: sdk.ProviderUsage{InputTokens: 20, OutputTokens: 4, CacheReadTokens: 13},
+		},
+		{
+			name:      "without cached prompt details",
+			usageJSON: `{"prompt_tokens":11,"completion_tokens":3}`,
+			wantUsage: sdk.ProviderUsage{InputTokens: 11, OutputTokens: 3},
+		},
+		{
+			name:      "cache only",
+			usageJSON: `{"prompt_tokens":0,"completion_tokens":0,"prompt_tokens_details":{"cached_tokens":13}}`,
+			wantUsage: sdk.ProviderUsage{CacheReadTokens: 13},
+		},
 	}
 
-	assert.Equal(t, []string{"ok"}, textParts)
-	require.Len(t, usages, 1)
-	assert.Equal(t, 20, usages[0].InputTokens)
-	assert.Equal(t, 4, usages[0].OutputTokens)
-	assert.Equal(t, 13, usages[0].CacheReadTokens)
-	assert.Zero(t, usages[0].CacheCreationTokens)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := sseStream(
+				sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
+				`data: {"id":"chatcmpl-test","choices":[],"usage":`+tt.usageJSON+`}`+"\n",
+				sseDone(),
+			)
+
+			server := setupServer(stream)
+			defer server.Close()
+
+			p := newTestProvider(server, "gpt-5.5")
+			ch, err := p.Stream(context.Background(), sdk.ProviderRequest{
+				Messages: []sdk.Message{sdk.NewUserMessage("hi")},
+			})
+			require.NoError(t, err)
+
+			events := collectEvents(t, ch)
+
+			var (
+				textParts []string
+				usages    []sdk.ProviderUsage
+			)
+
+			for _, e := range events {
+				switch e.Type {
+				case sdk.ProviderEventTextDelta:
+					textParts = append(textParts, e.Content.(string))
+				case sdk.ProviderEventUsage:
+					usages = append(usages, e.Content.(sdk.ProviderUsage))
+				}
+			}
+
+			assert.Equal(t, []string{"ok"}, textParts)
+			require.Len(t, usages, 1)
+			assert.Equal(t, tt.wantUsage, usages[0])
+		})
+	}
 }
 
-func TestStream_UsageWithoutCachedPromptDetails(t *testing.T) {
+func TestStream_RequestsUsageInStreamOptions(t *testing.T) {
 	stream := sseStream(
 		sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
-		`data: {"id":"chatcmpl-test","choices":[],"usage":{"prompt_tokens":11,"completion_tokens":3}}`+"\n",
 		sseDone(),
 	)
 
-	server := setupServer(stream)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Stream        bool `json:"stream"`
+			StreamOptions struct {
+				IncludeUsage bool `json:"include_usage"`
+			} `json:"stream_options"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		assert.True(t, body.Stream)
+		assert.True(t, body.StreamOptions.IncludeUsage)
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = fmt.Fprint(w, stream)
+	}))
 	defer server.Close()
 
 	p := newTestProvider(server, "gpt-5.5")
@@ -238,26 +279,15 @@ func TestStream_UsageWithoutCachedPromptDetails(t *testing.T) {
 
 	events := collectEvents(t, ch)
 
-	var (
-		textParts []string
-		usages    []sdk.ProviderUsage
-	)
+	var textParts []string
 
 	for _, e := range events {
-		switch e.Type {
-		case sdk.ProviderEventTextDelta:
+		if e.Type == sdk.ProviderEventTextDelta {
 			textParts = append(textParts, e.Content.(string))
-		case sdk.ProviderEventUsage:
-			usages = append(usages, e.Content.(sdk.ProviderUsage))
 		}
 	}
 
 	assert.Equal(t, []string{"ok"}, textParts)
-	require.Len(t, usages, 1)
-	assert.Equal(t, 11, usages[0].InputTokens)
-	assert.Equal(t, 3, usages[0].OutputTokens)
-	assert.Zero(t, usages[0].CacheReadTokens)
-	assert.Zero(t, usages[0].CacheCreationTokens)
 }
 
 func TestStream_ToolCall(t *testing.T) {
@@ -725,14 +755,8 @@ func TestStream_UsesProviderConfiguredHTTPTimeout(t *testing.T) {
 }
 
 func TestProvider_DoesNotExposeUnsupportedTokenCounter(t *testing.T) {
-	server := setupServer(sseStream(
-		sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
-		sseChunk(openaicompat.ChunkDelta{}, new("stop")),
-		sseDone(),
-	))
-	defer server.Close()
+	var p any = &provider{}
 
-	p := newTestProvider(server, "gpt-5.5")
 	_, ok := p.(sdk.TokenCounter)
 
 	assert.False(t, ok, "OpenAI chat completions provider should not claim exact preflight token counts")

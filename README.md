@@ -55,9 +55,20 @@ The OpenAI provider supports shared provider HTTP and retry settings from Weave 
 
 Duration fields use Go duration strings such as `5s`, `1m`, or `500ms`. `jitter` accepts `full` or `none`.
 
+## Supported Models
+
+| Model | Default | Context window | Max output tokens | Reasoning | XHigh |
+| --- | --- | ---: | ---: | --- | --- |
+| `gpt-5.5` | Yes | 1,050,000 | 128,000 | Yes | Yes |
+| `gpt-5.4` | No | 1,050,000 | 128,000 | Yes | Yes |
+| `gpt-5.2` | No | 400,000 | 128,000 | Yes | Yes |
+| `gpt-4.1` | No | 1,047,576 | 32,768 | No | No |
+| `o4-mini` | No | 200,000 | 100,000 | Yes | No |
+| `o3` | No | 200,000 | 100,000 | Yes | No |
+
 ## Token Accounting
 
-The provider reports exact streamed usage from OpenAI Chat Completions responses when the API includes usage data. This includes prompt tokens, completion tokens, and cached prompt tokens when OpenAI returns `prompt_tokens_details.cached_tokens`.
+The provider reports exact streamed usage from OpenAI Chat Completions responses when the API includes usage data. This includes prompt tokens, completion tokens, and cached prompt tokens when OpenAI returns `prompt_tokens_details.cached_tokens`. Cached prompt tokens are surfaced as `sdk.ProviderUsage.CacheReadTokens`; `CacheCreationTokens` remains zero because Chat Completions usage does not currently provide a matching source field through this provider.
 
 Preflight token counting is not exact in this extension today. The provider does not expose `sdk.TokenCounter`, and it does not ship a tokenizer-backed counter. OpenAI's exact input-token count endpoint is on the Responses API (`/v1/responses/input_tokens`), while this extension renders Chat Completions requests for `/v1/chat/completions`. Until the provider moves to a compatible request shape or gains a provider-canonical tokenizer, preflight budgeting should use Weave's calibrated heuristic fallback rather than an exact-count claim.
 
