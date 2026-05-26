@@ -719,6 +719,20 @@ func TestStream_UsesProviderConfiguredHTTPTimeout(t *testing.T) {
 	assert.Contains(t, err.Error(), "timeout awaiting response headers")
 }
 
+func TestProvider_DoesNotExposeUnsupportedTokenCounter(t *testing.T) {
+	server := setupServer(sseStream(
+		sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
+		sseChunk(openaicompat.ChunkDelta{}, new("stop")),
+		sseDone(),
+	))
+	defer server.Close()
+
+	p := newTestProvider(server, "gpt-5.5")
+	_, ok := p.(sdk.TokenCounter)
+
+	assert.False(t, ok, "OpenAI chat completions provider should not claim exact preflight token counts")
+}
+
 func TestProviderInit_InvalidHTTPConfigFails(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("OPENAI_API_KEY", "test-key")

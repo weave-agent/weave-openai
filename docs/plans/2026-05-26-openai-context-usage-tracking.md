@@ -57,12 +57,12 @@
 - [x] run `go test ./...` - must pass before next task
 
 ### Task 2: Add OpenAI preflight count strategy if supported
-- [ ] evaluate whether current OpenAI API path supports a no-generation count request in this provider shape
-- [ ] if supported, implement `sdk.TokenCounter` using provider count endpoint or minimal-output request that does not stream user-visible content
-- [ ] if not supported, document fallback to agent calibrated heuristic and do not add fake exact counts
-- [ ] write tests for supported count success/error path or documented unsupported behavior
-- [ ] write tests preserving model override and reasoning-effort handling in count path if implemented
-- [ ] run `go test ./...` - must pass before next task
+- [x] evaluate whether current OpenAI API path supports a no-generation count request in this provider shape
+- [x] if supported, implement `sdk.TokenCounter` using provider count endpoint or minimal-output request that does not stream user-visible content (not supported for current Chat Completions request shape)
+- [x] if not supported, document fallback to agent calibrated heuristic and do not add fake exact counts
+- [x] write tests for supported count success/error path or documented unsupported behavior
+- [x] write tests preserving model override and reasoning-effort handling in count path if implemented (not applicable - no count path implemented)
+- [x] run `go test ./...` - must pass before next task
 
 ### Task 3: Verify model budget metadata
 - [ ] review OpenAI model context windows and max output token metadata for budget accuracy
