@@ -79,7 +79,7 @@
 - [x] verify no prompts or credentials are logged in token accounting paths
 
 ### Task 5: Update documentation
-- [ ] update README or provider docs with token accounting support level: exact, tokenizer, or calibrated heuristic
+- [x] update README or provider docs with token accounting support level: exact, tokenizer, or calibrated heuristic
 
 ## Technical Details
 - Prefer honest count source reporting over pretending heuristic counts are exact.

@@ -57,7 +57,9 @@ Duration fields use Go duration strings such as `5s`, `1m`, or `500ms`. `jitter`
 
 ## Token Accounting
 
-The provider streams OpenAI usage events from Chat Completions responses, including cached prompt tokens when the API returns them. It does not currently expose `sdk.TokenCounter` for preflight counts: OpenAI's exact input-token count endpoint is on the Responses API (`/v1/responses/input_tokens`), while this extension renders Chat Completions requests for `/v1/chat/completions`. Until the provider moves to a compatible request shape or gains a provider-canonical tokenizer, preflight budgeting should use Weave's calibrated heuristic fallback rather than an exact-count claim.
+The provider reports exact streamed usage from OpenAI Chat Completions responses when the API includes usage data. This includes prompt tokens, completion tokens, and cached prompt tokens when OpenAI returns `prompt_tokens_details.cached_tokens`.
+
+Preflight token counting is not exact in this extension today. The provider does not expose `sdk.TokenCounter`, and it does not ship a tokenizer-backed counter. OpenAI's exact input-token count endpoint is on the Responses API (`/v1/responses/input_tokens`), while this extension renders Chat Completions requests for `/v1/chat/completions`. Until the provider moves to a compatible request shape or gains a provider-canonical tokenizer, preflight budgeting should use Weave's calibrated heuristic fallback rather than an exact-count claim.
 
 ## Development
 
