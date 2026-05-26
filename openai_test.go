@@ -198,8 +198,10 @@ func TestStream_UsageWithCachedPromptDetails(t *testing.T) {
 
 	events := collectEvents(t, ch)
 
-	var textParts []string
-	var usages []sdk.ProviderUsage
+	var (
+		textParts []string
+		usages    []sdk.ProviderUsage
+	)
 
 	for _, e := range events {
 		switch e.Type {
@@ -236,8 +238,10 @@ func TestStream_UsageWithoutCachedPromptDetails(t *testing.T) {
 
 	events := collectEvents(t, ch)
 
-	var textParts []string
-	var usages []sdk.ProviderUsage
+	var (
+		textParts []string
+		usages    []sdk.ProviderUsage
+	)
 
 	for _, e := range events {
 		switch e.Type {
@@ -418,6 +422,7 @@ func TestStream_RetriesTransientErrorWithConfiguredPolicy(t *testing.T) {
 	events := collectEvents(t, ch)
 
 	var textParts []string
+
 	for _, e := range events {
 		if e.Type == sdk.ProviderEventTextDelta {
 			textParts = append(textParts, e.Content.(string))
@@ -629,7 +634,7 @@ func TestProviderInit_WithDefaultConfig(t *testing.T) {
 	assert.Equal(t, 5, p.config.RetryConfig.MaxRetries)
 	assert.Equal(t, time.Second, p.config.RetryConfig.BaseDelay)
 	assert.Equal(t, 30*time.Second, p.config.RetryConfig.MaxDelay)
-	assert.Equal(t, 2.0, p.config.RetryConfig.Multiplier)
+	assert.InDelta(t, 2.0, p.config.RetryConfig.Multiplier, 0.0001)
 	assert.Equal(t, retry.JitterFull, p.config.RetryConfig.Jitter)
 }
 

@@ -72,11 +72,11 @@
 - [x] run `go test ./...` - must pass before next task
 
 ### Task 4: Verify acceptance criteria
-- [ ] verify OpenAI usage telemetry includes cache read tokens when provider sends them
-- [ ] verify no unsupported exact-count claims are exposed
-- [ ] run full provider tests with `go test ./...`
-- [ ] run `golangci-lint run` or repo lint command
-- [ ] verify no prompts or credentials are logged in token accounting paths
+- [x] verify OpenAI usage telemetry includes cache read tokens when provider sends them
+- [x] verify no unsupported exact-count claims are exposed
+- [x] run full provider tests with `go test ./...`
+- [x] run `golangci-lint run` or repo lint command
+- [x] verify no prompts or credentials are logged in token accounting paths
 
 ### Task 5: Update documentation
 - [ ] update README or provider docs with token accounting support level: exact, tokenizer, or calibrated heuristic

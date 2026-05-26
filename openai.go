@@ -24,23 +24,26 @@ type AuthConfig struct {
 	APIKey string `json:"api_key" env:"OPENAI_API_KEY" description:"API key"`
 }
 
+const providerName = "openai"
+
 type provider struct {
 	client *http.Client
 	config openaicompat.ProviderConfig
 }
 
+//nolint:gochecknoinits // Providers register with Weave through package initialization.
 func init() {
-	sdk.RegisterProvider("openai", func(cfg sdk.Config, oc OpenAIConfig, a AuthConfig) (sdk.Provider, error) {
+	sdk.RegisterProvider(providerName, func(cfg sdk.Config, oc OpenAIConfig, a AuthConfig) (sdk.Provider, error) {
 		if a.APIKey == "" {
 			return nil, errors.New("openai: API key required (set OPENAI_API_KEY or add to ~/.weave/auth.json)")
 		}
 
-		client, _, err := providerhttp.ForProvider(cfg, "openai")
+		client, _, err := providerhttp.ForProvider(cfg, providerName)
 		if err != nil {
 			return nil, fmt.Errorf("openai: resolve HTTP config: %w", err)
 		}
 
-		retryConfig, _, err := providerretry.ForProvider(cfg, "openai")
+		retryConfig, _, err := providerretry.ForProvider(cfg, providerName)
 		if err != nil {
 			return nil, fmt.Errorf("openai: resolve retry config: %w", err)
 		}
