@@ -87,22 +87,9 @@ func modifyRequest(modelName string) func(body map[string]any, so *model.StreamO
 			model.ThinkingHigh:    "high",
 			model.ThinkingXHigh:   "xhigh",
 		}
-		if supportsReasoningEffortNone(mdl) {
-			effortMap[model.ThinkingOff] = "none"
-		}
-
 		if effort, ok := effortMap[thinkingLevel]; ok {
 			body["reasoning_effort"] = effort
 		}
-	}
-}
-
-func supportsReasoningEffortNone(modelName string) bool {
-	switch modelName {
-	case "gpt-5.5", "gpt-5.4", "gpt-5.2":
-		return true
-	default:
-		return false
 	}
 }
 

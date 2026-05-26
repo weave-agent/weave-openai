@@ -652,7 +652,7 @@ func TestStream_WithThinkingLevel_SetsReasoningEffort(t *testing.T) {
 	}
 }
 
-func TestStream_WithThinkingOff_SetsNoneForSupportedModels(t *testing.T) {
+func TestStream_WithThinkingOff_OmitsReasoningEffort(t *testing.T) {
 	tests := []string{"gpt-5.5", "gpt-5.4", "gpt-5.2"}
 
 	for _, modelName := range tests {
@@ -685,7 +685,8 @@ func TestStream_WithThinkingOff_SetsNoneForSupportedModels(t *testing.T) {
 			require.NoError(t, err)
 			collectEvents(t, ch)
 
-			assert.Equal(t, "none", receivedBody["reasoning_effort"])
+			raw, _ := json.Marshal(receivedBody)
+			assert.NotContains(t, string(raw), "reasoning_effort")
 		})
 	}
 }
