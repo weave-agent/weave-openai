@@ -73,8 +73,15 @@ func modifyRequest(modelName string) func(body map[string]any, so *model.StreamO
 			return
 		}
 
-		if m, ok := model.GetModelForProvider(mdl, "openai"); ok && !m.Reasoning {
-			return
+		thinkingLevel := so.ThinkingLevel
+		if m, ok := model.GetModelForProvider(mdl, providerName); ok {
+			if !m.Reasoning {
+				return
+			}
+
+			thinkingLevel = model.ClampForModel(thinkingLevel, m)
+		} else if thinkingLevel == model.ThinkingXHigh {
+			thinkingLevel = model.ThinkingHigh
 		}
 
 		effortMap := map[model.ThinkingLevel]string{
@@ -82,10 +89,10 @@ func modifyRequest(modelName string) func(body map[string]any, so *model.StreamO
 			model.ThinkingLow:     "low",
 			model.ThinkingMedium:  "medium",
 			model.ThinkingHigh:    "high",
-			model.ThinkingXHigh:   "high",
+			model.ThinkingXHigh:   "xhigh",
 		}
 
-		if effort, ok := effortMap[so.ThinkingLevel]; ok {
+		if effort, ok := effortMap[thinkingLevel]; ok {
 			body["reasoning_effort"] = effort
 		}
 	}

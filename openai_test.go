@@ -606,7 +606,7 @@ func TestStream_WithThinkingLevel_SetsReasoningEffort(t *testing.T) {
 		{sdkmodel.ThinkingLow, "low", ""},
 		{sdkmodel.ThinkingMedium, "medium", ""},
 		{sdkmodel.ThinkingHigh, "high", ""},
-		{sdkmodel.ThinkingXHigh, "high", ""},
+		{sdkmodel.ThinkingXHigh, "xhigh", ""},
 	}
 
 	for _, tt := range tests {
@@ -627,7 +627,10 @@ func TestStream_WithThinkingLevel_SetsReasoningEffort(t *testing.T) {
 
 			// Use a reasoning model so reasoning_effort is actually set.
 			sdkmodel.ResetModelRegistry()
-			sdkmodel.RegisterModel(sdkmodel.ModelDef{ID: "test-reasoning", Reasoning: true})
+			sdkmodel.RegisterModel(sdkmodel.ModelDef{
+				ID: "test-reasoning", Provider: providerName,
+				Reasoning: true, SupportsXHigh: true,
+			})
 			t.Cleanup(func() { sdkmodel.ResetModelRegistry() })
 
 			p := newTestProvider(server, "test-reasoning")
@@ -647,6 +650,38 @@ func TestStream_WithThinkingLevel_SetsReasoningEffort(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStream_WithThinkingXHigh_ClampsForModelWithoutXHigh(t *testing.T) {
+	var receivedBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, sseStream(
+			sseChunk(openaicompat.ChunkDelta{Content: "ok"}, nil),
+			sseChunk(openaicompat.ChunkDelta{}, new("stop")),
+			sseDone(),
+		))
+	}))
+	defer server.Close()
+
+	sdkmodel.ResetModelRegistry()
+	sdkmodel.RegisterModel(sdkmodel.ModelDef{
+		ID: "test-reasoning-no-xhigh", Provider: providerName,
+		Reasoning: true,
+	})
+	t.Cleanup(func() { sdkmodel.ResetModelRegistry() })
+
+	p := newTestProvider(server, "test-reasoning-no-xhigh")
+	ch, err := p.Stream(context.Background(), sdk.ProviderRequest{
+		Messages: []sdk.Message{sdk.NewUserMessage("hi")},
+	}, sdkmodel.WithThinkingLevel(sdkmodel.ThinkingXHigh))
+	require.NoError(t, err)
+	collectEvents(t, ch)
+
+	assert.Equal(t, "high", receivedBody["reasoning_effort"])
 }
 
 func TestProviderInit_WithDefaultConfig(t *testing.T) {
