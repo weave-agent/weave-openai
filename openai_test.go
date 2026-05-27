@@ -855,11 +855,11 @@ func TestRegisterModels_Metadata(t *testing.T) {
 	}{
 		{
 			id: "gpt-5.5", displayName: "GPT-5.5", reasoning: true, supportsXHigh: true,
-			contextWindow: 1050000, maxTokens: 128000, defaultModel: true,
+			contextWindow: 1000000, maxTokens: 128000, defaultModel: true,
 		},
 		{
 			id: "gpt-5.4", displayName: "GPT-5.4", reasoning: true, supportsXHigh: true,
-			contextWindow: 1050000, maxTokens: 128000,
+			contextWindow: 1000000, maxTokens: 128000,
 		},
 		{
 			id: "gpt-5.2", displayName: "GPT-5.2", reasoning: true, supportsXHigh: true,
@@ -909,7 +909,7 @@ func TestRegisterModels_DefaultModel(t *testing.T) {
 	assert.True(t, got.Default)
 	assert.True(t, got.Reasoning)
 	assert.True(t, got.SupportsXHigh)
-	assert.Equal(t, 1050000, got.ContextWindow)
+	assert.Equal(t, 1000000, got.ContextWindow)
 	assert.Equal(t, 128000, got.MaxTokens)
 }
 
